@@ -1,0 +1,57 @@
+
+# Build the Java app, push Docker image, and create a temporary URL
+
+name: Multistage Docker Project
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # Get project code
+      - uses: actions/checkout@v4
+
+      # Build and push Docker image
+      - name: Build and Push Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Multistage-Dockerfile-main
+          file: ./Multistage-Dockerfile-main/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/multistage-docker:latest
+          platforms: linux/amd64
+
+      # Start the container
+      - name: Run Application
+        run: |
+          docker run -d --name java-app -p 8080:8080 ${{ secrets.DOCKERHUB_USERNAME }}/multistage-docker:latest
+
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/ > /dev/null; then
+              echo "Application is running"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs java-app
+          exit 1
+
+      # Install Cloudflare Tunnel
+      - uses: AnimMouse/setup-cloudflared@v2
+
+      # Create a temporary public URL
+      - name: Start Tunnel
+        uses: AnimMouse/setup-cloudflared/tunnel@v2
+        with:
+          url: http://localhost:8080
+
+      # Keep the application running temporarily
+      - name: Keep App Running
+        run: sleep 1500
